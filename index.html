@@ -1,0 +1,101 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EdX AI Student Assistant - Batch Mode</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; background:#f5f7fa; color:#333; margin:0; padding:0; }
+    header { background:#0072ce; color:#fff; padding:2rem 1rem; text-align:center; }
+    header h1 { margin-bottom:0.5rem; }
+    main { max-width:1000px; margin:2rem auto; padding:0 1rem; }
+    .upload-section { background:#fff; padding:2rem; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.1); text-align:center; margin-bottom:2rem; }
+    input[type=file] { padding:0.5rem; border-radius:6px; border:1px solid #ccc; }
+    button { background:#0072ce; color:#fff; padding:0.8rem 1.5rem; border:none; border-radius:6px; cursor:pointer; margin-top:1rem; transition:0.3s; }
+    button:hover { background:#005bb5; }
+    .recommendations { margin-top:2rem; }
+    .student-card { background:#fff; padding:1.5rem; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.1); margin-bottom:1.5rem; }
+    .student-card h3 { color:#0072ce; margin-bottom:0.5rem; }
+    .student-card pre { background:#f0f0f0; padding:1rem; border-radius:8px; overflow-x:auto; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>EdX AI Student Assistant - Batch Mode</h1>
+  <p>Upload your student CSV/Excel file and get AI-generated course recommendations</p>
+</header>
+
+<main>
+  <div class="upload-section">
+    <input type="file" id="fileInput" accept=".csv,.xlsx">
+    <br>
+    <button id="generateBtn">Generate Recommendations</button>
+  </div>
+
+  <div class="recommendations" id="recommendations"></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script>
+const fileInput = document.getElementById('fileInput');
+const generateBtn = document.getElementById('generateBtn');
+const recommendationsDiv = document.getElementById('recommendations');
+
+function parseFile(file, callback) {
+  const reader = new FileReader();
+  const ext = file.name.split('.').pop().toLowerCase();
+  reader.onload = function(e) {
+    let data = e.target.result;
+    if(ext === 'csv') {
+      const rows = data.split('\n').map(r => r.split(','));
+      const headers = rows[0];
+      const students = rows.slice(1).map(r => {
+        let obj = {};
+        headers.forEach((h,i) => obj[h.trim()] = r[i] ? r[i].trim() : '');
+        return obj;
+      });
+      callback(students);
+    } else if(ext === 'xlsx') {
+      const workbook = XLSX.read(data, {type:'binary'});
+      const firstSheet = workbook.SheetNames[0];
+      const sheetData = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], {defval:''});
+      callback(sheetData);
+    }
+  };
+  if(ext==='csv') reader.readAsText(file);
+  else if(ext==='xlsx') reader.readAsBinaryString(file);
+}
+
+generateBtn.addEventListener('click', async () => {
+  const file = fileInput.files[0];
+  if(!file) return alert('Please upload a CSV or Excel file first.');
+  parseFile(file, async (students) => {
+    recommendationsDiv.innerHTML = '<p>Generating AI recommendations...</p>';
+    try {
+      const res = await fetch('/recommendations', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ students })
+      });
+      const data = await res.json();
+      recommendationsDiv.innerHTML = '';
+      data.forEach(student => {
+        const card = document.createElement('div');
+        card.className = 'student-card';
+        card.innerHTML = `<h3>${student.name} - Grade ${student.grade} (${student.style} Learner)</h3>
+                          <pre>${student.recommendation}</pre>`;
+        recommendationsDiv.appendChild(card);
+      });
+      recommendationsDiv.scrollIntoView({behavior:'smooth'});
+    } catch(err) {
+      recommendationsDiv.innerHTML = '<p style="color:red;">Error generating recommendations. Check server/API key.</p>';
+      console.error(err);
+    }
+  });
+});
+</script>
+
+</body>
+</html>
